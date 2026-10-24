@@ -355,6 +355,7 @@ async function cicloRede() {
     renderizar();
     await espera(ESPACO_MS);
   }
+  try { await obterT1("br", ciclo); } catch { /* comparação com o 1º turno indisponível */ }
   for (const [uf] of UFS) {
     const d = estado.dados[uf];
     if (d && d.te > 0 && d.est / d.te >= LIMIAR_APURADO) continue;
@@ -463,16 +464,20 @@ function renderAvisos(r) {
 
 function renderPlacar(r) {
   const top = r.ordem.slice(0, 2);
+  // Sem nenhuma UF com apuração suficiente, a projeção seria só o 1º turno: não exibe o número.
+  const temApuracao = r.linhas.some(l => l.status === "parcial" || l.status === "final");
+  const t1br = estado.t1.br;
   const outros = r.ordem.slice(2);
   const cards = top.map(n => {
     const parc = r.parcial[n];
     return `<article class="cand" style="--cor:${corDe(n)}">
       <div class="nome">${esc(nomeCand(n))} <span class="n">${esc(n)}</span></div>
-      <div class="pct">${fmtPct(r.pct[n]).replace("%", "<small>%</small>")}</div>
+      <div class="pct">${temApuracao ? fmtPct(r.pct[n]).replace("%", "<small>%</small>") : "—"}</div>
       <dl>
-        <dt>Votos projetados</dt><dd>${fmtInt.format(r.total[n] || 0)}</dd>
+        <dt>Votos projetados</dt><dd>${temApuracao ? fmtInt.format(r.total[n] || 0) : "—"}</dd>
         <dt>Parcial oficial</dt><dd>${fmtPct(parc)}</dd>
-        <dt>Projeção − parcial</dt><dd>${Number.isFinite(parc) ? sinal(r.pct[n] - parc) + " p.p." : "—"}</dd>
+        <dt>Votos no 1º turno</dt><dd>${t1br?.votos[n] != null ? fmtInt.format(t1br.votos[n]) : "—"}</dd>
+        <dt>Projetado − 1º turno</dt><dd>${temApuracao && t1br?.votos[n] != null ? sinalInt((r.total[n] || 0) - t1br.votos[n]) + " votos" : "—"}</dd>
       </dl>
     </article>`;
   });
@@ -487,17 +492,21 @@ function renderPlacar(r) {
   }
   $("cands").innerHTML = cards.join("") || `<p class="muted">Aguardando os primeiros dados do TSE.</p>`;
 
-  $("barra").innerHTML = r.validos
+  $("barra").hidden = !(temApuracao && r.validos);
+  $("barra").innerHTML = temApuracao && r.validos
     ? r.ordem.slice(0, 2).map(n => `<span style="width:${r.pct[n]}%;background:${corDe(n)}"></span>`).join("") +
       (outros.length ? `<span style="flex:1;background:var(--outros)"></span>` : "") + `<span class="meio"></span>`
     : "";
 
-  if (top.length === 2 && r.validos) {
+  if (!temApuracao) {
+    $("margem").textContent = "A projeção aparece quando ao menos uma UF tiver 5% do eleitorado apurado.";
+  } else if (top.length === 2 && r.validos) {
     const [a, b] = top;
     const dif = (r.total[a] || 0) - (r.total[b] || 0);
     $("margem").innerHTML = `<strong style="color:${corDe(a)}">${esc(nomeCand(a))}</strong> à frente por <strong class="num">${fmtInt.format(dif)}</strong> votos projetados (${fmtPct(r.pct[a] - r.pct[b])} dos válidos). Total projetado de votos válidos: <span class="num">${fmtInt.format(r.validos)}</span>.`;
   } else $("margem").textContent = "";
 }
+function sinalInt(v) { return (v > 0 ? "+" : v < 0 ? "−" : "") + fmtInt.format(Math.abs(Math.round(v))); }
 function sinal(v) { return Number.isFinite(v) ? (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"; }
 
 // Gráfico: x = % de seções apuradas no país; y = % dos votos válidos.

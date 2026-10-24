@@ -99,8 +99,15 @@ button:hover, select:hover { border-color: var(--accent); }
 .cand { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: grid; gap: 6px; border-top: 4px solid var(--cor); }
 .cand .nome { font-family: var(--f-display); font-weight: 700; font-size: 1.15rem; font-stretch: 90%; display: flex; gap: 8px; align-items: baseline; }
 .cand .nome .n { font-family: var(--f-mono); font-size: .85rem; color: var(--muted); font-weight: 400; }
-.cand .pct { font-family: var(--f-display); font-weight: 800; font-size: clamp(2.6rem, 8vw, 3.6rem); line-height: 1; font-variant-numeric: tabular-nums; }
+.dupla { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.dupla .rot { font-size: .78rem; color: var(--muted); font-weight: 600; letter-spacing: .03em; }
+.cand .pct { font-family: var(--f-display); font-weight: 800; font-size: clamp(2rem, 6vw, 2.8rem); line-height: 1.05; font-variant-numeric: tabular-nums; }
 .cand .pct small { font-size: .45em; font-weight: 600; }
+.comp { width: 100%; border-collapse: collapse; font-size: .9rem; margin-top: 8px; }
+.comp th, .comp td { padding: 4px 0 4px 10px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; position: static; background: none; }
+.comp th { font-size: .72rem; }
+.comp th:first-child, .comp td:first-child { text-align: left; padding-left: 0; color: var(--muted); }
+.comp tr:last-child td { border-bottom: 0; }
 .cand dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; margin: 6px 0 0; font-size: .92rem; }
 .cand dt { color: var(--muted); }
 .cand dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
@@ -178,7 +185,7 @@ a { color: var(--accent); }
   </header>
 
   <section class="placar" aria-labelledby="t-placar">
-    <h2 id="t-placar">Resultado projetado com 100% das urnas</h2>
+    <h2 id="t-placar">Apuração parcial e projeção com 100% das urnas</h2>
     <div id="cands" class="cands"></div>
     <div class="barra" id="barra" aria-hidden="true"></div>
     <div id="margem" class="margem"></div>
@@ -259,7 +266,8 @@ function normalizar(j) {
     uf: j.cdabr, dg: j.dg, hg: j.hg,
     ts: int(j.s?.ts), st: int(j.s?.st),
     te: int(j.e?.te), est: int(j.e?.est),
-    vv: int(j.v?.vv), cands
+    vv: int(j.v?.vv), tv: int(j.v?.tv), vb: int(j.v?.vb), vn: int(j.v?.tvn),
+    c: int(j.e?.c), a: int(j.e?.a), cands
   };
 }
 
@@ -325,13 +333,13 @@ function resumoT1(d) {
 
 async function obterT1(uf, ciclo) {
   if (estado.t1[uf]) return estado.t1[uf];
-  const cache = lerLocal("t1:" + uf);
+  const cache = lerLocal("t1v2:" + uf);
   if (cache?.bruto) { estado.t1[uf] = cache; return cache; }
   const d = await buscar(ELE_T1, uf);
   if (ciclo !== estado.ciclo) return null;
   const r = resumoT1(d);
   estado.t1[uf] = r;
-  gravarLocal("t1:" + uf, r);
+  gravarLocal("t1v2:" + uf, r);
   await espera(ESPACO_MS);
   return r;
 }
@@ -462,40 +470,58 @@ function renderAvisos(r) {
   el.innerHTML = msgs.map(m => `<div class="aviso">${esc(m)}</div>`).join("");
 }
 
+// Percentuais de brancos, nulos (sobre o total de votos) e abstenção (sobre o eleitorado apurado).
+function taxas(d) {
+  if (!d || !d.tv) return { brancos: NaN, nulos: NaN, abst: NaN };
+  return { brancos: (100 * d.vb) / d.tv, nulos: (100 * d.vn) / d.tv, abst: d.est ? (100 * d.a) / d.est : NaN };
+}
+
 function renderPlacar(r) {
   const top = r.ordem.slice(0, 2);
   // Sem nenhuma UF com apuração suficiente, a projeção seria só o 1º turno: não exibe o número.
   const temApuracao = r.linhas.some(l => l.status === "parcial" || l.status === "final");
   const t1br = estado.t1.br;
-  const outros = r.ordem.slice(2);
+  const br = estado.dados.br;
+  const grande = v => (Number.isFinite(v) ? fmtPct(v).replace("%", "<small>%</small>") : "—");
   const cards = top.map(n => {
-    const parc = r.parcial[n];
+    const proj = temApuracao ? r.pct[n] : NaN;
+    const votosProj = temApuracao ? r.total[n] || 0 : NaN;
+    const v1 = t1br?.votos[n];
+    const p1 = v1 != null && t1br.vv ? (100 * v1) / t1br.vv : NaN;
+    const dv = Number.isFinite(votosProj) && v1 != null ? sinalInt(votosProj - v1) : "—";
+    const dp = Number.isFinite(proj) && Number.isFinite(p1) ? sinal(proj - p1) + " p.p." : "—";
     return `<article class="cand" style="--cor:${corDe(n)}">
       <div class="nome">${esc(nomeCand(n))} <span class="n">${esc(n)}</span></div>
-      <div class="pct">${temApuracao ? fmtPct(r.pct[n]).replace("%", "<small>%</small>") : "—"}</div>
-      <dl>
-        <dt>Votos projetados</dt><dd>${temApuracao ? fmtInt.format(r.total[n] || 0) : "—"}</dd>
-        <dt>Parcial oficial</dt><dd>${fmtPct(parc)}</dd>
-        <dt>Votos no 1º turno</dt><dd>${t1br?.votos[n] != null ? fmtInt.format(t1br.votos[n]) : "—"}</dd>
-        <dt>Projetado − 1º turno</dt><dd>${temApuracao && t1br?.votos[n] != null ? sinalInt((r.total[n] || 0) - t1br.votos[n]) + " votos" : "—"}</dd>
-      </dl>
+      <div class="dupla">
+        <div><div class="rot">Apuração parcial</div><div class="pct">${grande(r.parcial[n])}</div></div>
+        <div><div class="rot">Projeção com 100%</div><div class="pct">${grande(proj)}</div></div>
+      </div>
+      <table class="comp">
+        <thead><tr><th scope="col"></th><th scope="col">Projeção</th><th scope="col">1º turno</th><th scope="col">Diferença</th></tr></thead>
+        <tbody>
+          <tr><td>Votos</td><td>${Number.isFinite(votosProj) ? fmtInt.format(votosProj) : "—"}</td><td>${v1 != null ? fmtInt.format(v1) : "—"}</td><td>${dv}</td></tr>
+          <tr><td>% dos válidos</td><td>${fmtPct(proj)}</td><td>${fmtPct(p1)}</td><td>${dp}</td></tr>
+        </tbody>
+      </table>
     </article>`;
   });
-  if (outros.length) {
-    const soma = outros.reduce((s, n) => s + (r.total[n] || 0), 0);
-    const pct = r.validos ? (100 * soma) / r.validos : NaN;
+  if (top.length) {
+    const atual = taxas(br), ant = taxas(t1br?.bruto);
+    const lin = (rot, k) => `<tr><td>${rot}</td><td>${fmtPct(atual[k])}</td><td>${fmtPct(ant[k])}</td><td>${Number.isFinite(atual[k]) && Number.isFinite(ant[k]) ? sinal(atual[k] - ant[k]) + " p.p." : "—"}</td></tr>`;
     cards.push(`<article class="cand" style="--cor:var(--outros)">
-      <div class="nome">Outros ${outros.length} candidatos</div>
-      <div class="pct">${fmtPct(pct).replace("%", "<small>%</small>")}</div>
-      <dl><dt>Votos projetados</dt><dd>${fmtInt.format(soma)}</dd></dl>
+      <div class="nome">Brancos, nulos e abstenção</div>
+      <table class="comp">
+        <thead><tr><th scope="col"></th><th scope="col">Apurado</th><th scope="col">1º turno</th><th scope="col">Diferença</th></tr></thead>
+        <tbody>${lin("Brancos", "brancos")}${lin("Nulos", "nulos")}${lin("Abstenção", "abst")}</tbody>
+      </table>
+      <p class="muted" style="margin:0;font-size:.8rem">Brancos e nulos sobre o total de votos; abstenção sobre o eleitorado das seções apuradas.</p>
     </article>`);
   }
   $("cands").innerHTML = cards.join("") || `<p class="muted">Aguardando os primeiros dados do TSE.</p>`;
 
   $("barra").hidden = !(temApuracao && r.validos);
   $("barra").innerHTML = temApuracao && r.validos
-    ? r.ordem.slice(0, 2).map(n => `<span style="width:${r.pct[n]}%;background:${corDe(n)}"></span>`).join("") +
-      (outros.length ? `<span style="flex:1;background:var(--outros)"></span>` : "") + `<span class="meio"></span>`
+    ? top.map(n => `<span style="width:${r.pct[n]}%;background:${corDe(n)}"></span>`).join("") + `<span class="meio"></span>`
     : "";
 
   if (!temApuracao) {
@@ -503,7 +529,7 @@ function renderPlacar(r) {
   } else if (top.length === 2 && r.validos) {
     const [a, b] = top;
     const dif = (r.total[a] || 0) - (r.total[b] || 0);
-    $("margem").innerHTML = `<strong style="color:${corDe(a)}">${esc(nomeCand(a))}</strong> à frente por <strong class="num">${fmtInt.format(dif)}</strong> votos projetados (${fmtPct(r.pct[a] - r.pct[b])} dos válidos). Total projetado de votos válidos: <span class="num">${fmtInt.format(r.validos)}</span>.`;
+    $("margem").innerHTML = `Projeção: <strong style="color:${corDe(a)}">${esc(nomeCand(a))}</strong> à frente por <strong class="num">${fmtInt.format(dif)}</strong> votos (${sinal(r.pct[a] - r.pct[b]).replace("+", "")} p.p. dos válidos). Total projetado de votos válidos: <span class="num">${fmtInt.format(r.validos)}</span>.`;
   } else $("margem").textContent = "";
 }
 function sinalInt(v) { return (v > 0 ? "+" : v < 0 ? "−" : "") + fmtInt.format(Math.abs(Math.round(v))); }
@@ -594,6 +620,9 @@ function renderTabela(r) {
     { id: "apurado", rot: "Seções apuradas", val: l => (l.d && l.d.ts ? l.d.st / l.d.ts : -1) },
     ...top.map(n => ({ id: "p" + n, rot: `${nomeCand(n).split(" ")[0]} (parcial)`, val: l => (Number.isFinite(l.parc[n]) ? l.parc[n] : -1) })),
     ...top.map(n => ({ id: "v" + n, rot: `${nomeCand(n).split(" ")[0]} (projetado)`, val: l => l.proj[n] || 0 })),
+    { id: "brancos", rot: "Brancos", val: l => taxas(l.d).brancos || -1 },
+    { id: "nulos", rot: "Nulos", val: l => taxas(l.d).nulos || -1 },
+    { id: "abst", rot: "Abstenção", val: l => taxas(l.d).abst || -1 },
     { id: "saldo", rot: "Saldo projetado", val: l => (top.length === 2 ? (l.proj[top[0]] || 0) - (l.proj[top[1]] || 0) : 0) },
     { id: "status", rot: "Situação", val: l => ROTULO_STATUS[l.status] }
   ];
@@ -619,6 +648,7 @@ function renderTabela(r) {
       <td class="num">${fmtPct(ap)}<span class="prog"><i style="width:${Number.isFinite(ap) ? ap : 0}%"></i></span></td>
       ${top.map(n => `<td class="num">${fmtPct(l.parc[n])}</td>`).join("")}
       ${top.map(n => `<td class="num">${l.proj[n] != null ? fmtInt.format(l.proj[n]) : "—"}</td>`).join("")}
+      ${(t => `<td class="num">${fmtPct(t.brancos)}</td><td class="num">${fmtPct(t.nulos)}</td><td class="num">${fmtPct(t.abst)}</td>`)(taxas(d))}
       <td class="num">${saldo}</td>
       <td><span class="chip ${l.status}">${ROTULO_STATUS[l.status]}</span>${err ? ` <span class="chip erro" title="${esc(err)}">Falha na leitura</span>` : ""}</td>
     </tr>`;

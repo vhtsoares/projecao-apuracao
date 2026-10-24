@@ -13,14 +13,9 @@ os arquivos JSON públicos do TSE direto do navegador.
 - **Online:** ative o GitHub Pages no repositório (Settings → Pages → Deploy from
   a branch, escolhendo o branch e a pasta raiz) e abra o endereço gerado.
 
-## Modos
+## Regras da projeção
 
-| Modo | O que faz |
-|---|---|
-| 2º turno (ao vivo) | lê a eleição `6258` a cada 60 s |
-| 1º turno (teste com dados reais) | lê a eleição `6257`, já 100% apurada; a projeção deve igualar o resultado oficial |
-| Simulação de apuração (1º turno) | revela os votos do 1º turno aos poucos, com viés dentro de cada UF, para mostrar a projeção convergindo |
-
-A opção "UFs sem apuração" define se uma UF ainda sem urnas apuradas entra na
-projeção com o resultado do 1º turno (dividido entre os dois finalistas) ou fica
-de fora.
+- A página lê o 2º turno (eleição `6258`) a cada 60 s.
+- UFs sem apuração ou com menos de 5% do eleitorado apurado contam como não
+  apuradas: entram na projeção com o resultado do 1º turno na UF (eleição
+  `6257`), dividido entre os dois finalistas.

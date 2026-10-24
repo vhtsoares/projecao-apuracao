@@ -17,8 +17,8 @@
   --muted: #56615f;
   --line: #d6dddb;
   --accent: #0d5c63;
-  --flavio: #2a78d6;
-  --lula: #d63b3b;
+  --flavio: #56691f;
+  --lula: #ec6a5e;
   --outros: #8a9492;
   --warn: #9a6700;
   --warn-bg: #fff4d6;
@@ -35,14 +35,14 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #111615; --surface: #1a1f1e; --fg: #eef2f1; --muted: #a3adab; --line: #2e3836;
-    --accent: #5fb7bf; --flavio: #4a8fe6; --lula: #e66767; --outros: #7d8886;
+    --accent: #5fb7bf; --flavio: #8a9f4c; --lula: #c43f38; --outros: #7d8886;
     --warn: #f0b84a; --warn-bg: #3a2e12; --ok: #5cc98a; --ok-bg: #15301f; --bad: #f28b82; --bad-bg: #3b1815; --info-bg: #17292b;
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #111615; --surface: #1a1f1e; --fg: #eef2f1; --muted: #a3adab; --line: #2e3836;
-  --accent: #5fb7bf; --flavio: #4a8fe6; --lula: #e66767; --outros: #7d8886;
+  --accent: #5fb7bf; --flavio: #8a9f4c; --lula: #c43f38; --outros: #7d8886;
   --warn: #f0b84a; --warn-bg: #3a2e12; --ok: #5cc98a; --ok-bg: #15301f; --bad: #f28b82; --bad-bg: #3b1815; --info-bg: #17292b;
   color-scheme: dark;
 }
@@ -144,7 +144,7 @@ td .uf { font-family: var(--f-mono); font-weight: 500; text-transform: uppercase
 .chip { display: inline-block; font-size: .75rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
 .chip.final { color: var(--ok); background: var(--ok-bg); }
 .chip.parcial { color: var(--accent); background: var(--info-bg); }
-.chip.instavel, .chip.fallback { color: var(--warn); background: var(--warn-bg); }
+.chip.inicio, .chip.fallback { color: var(--warn); background: var(--warn-bg); }
 .chip.sem, .chip.erro { color: var(--bad); background: var(--bad-bg); }
 .saldo { display: inline-flex; gap: 6px; align-items: center; }
 .saldo i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); display: inline-block; }
@@ -165,19 +165,6 @@ a { color: var(--accent); }
         <h1>Projeção da Apuração</h1>
       </div>
       <div class="controles">
-        <label for="modo">Dados
-          <select id="modo">
-            <option value="live">2º turno (ao vivo)</option>
-            <option value="t1">1º turno (teste com dados reais)</option>
-            <option value="sim">Simulação de apuração (1º turno)</option>
-          </select>
-        </label>
-        <label for="fallback">UFs sem apuração
-          <select id="fallback">
-            <option value="t1">Usar o 1º turno da UF</option>
-            <option value="excluir">Excluir da projeção</option>
-          </select>
-        </label>
         <button id="atualizar" type="button">Atualizar agora</button>
       </div>
     </div>
@@ -211,7 +198,8 @@ a { color: var(--accent); }
   <section class="nota" aria-labelledby="t-nota">
     <h2 id="t-nota" style="color:var(--fg)">Como a projeção é calculada</h2>
     <p>Para cada UF (e para o exterior), a página divide o eleitorado das seções já totalizadas pelo eleitorado total da UF. Os votos de cada candidato são divididos por essa fração, como se as seções restantes tivessem o mesmo comparecimento e a mesma divisão de votos das já apuradas. A soma das 28 projeções dá o resultado nacional.</p>
-    <p>A ordem de apuração dentro de cada UF não é aleatória: capitais e interior chegam em ritmos diferentes. A projeção corrige as diferenças entre estados, mas não dentro de cada estado. UFs com menos de 5% do eleitorado apurado aparecem como instáveis.</p>
+    <p>A ordem de apuração dentro de cada UF não é aleatória: capitais e interior chegam em ritmos diferentes. A projeção corrige as diferenças entre estados, mas não dentro de cada estado.</p>
+    <p>UFs sem apuração ou com menos de 5% do eleitorado apurado são tratadas como não apuradas: entram na projeção com o resultado do 1º turno na UF, dividido entre os dois finalistas, aplicado aos votos válidos do 1º turno.</p>
     <p>Esta é uma estimativa matemática, não um resultado. O resultado oficial é o divulgado pelo TSE em <a href="https://resultados.tse.jus.br" target="_blank" rel="noopener">resultados.tse.jus.br</a>.</p>
   </section>
 </div>
@@ -224,11 +212,10 @@ const BASE = "https://resultados.tse.jus.br/oficial/ele2026";
 const CARGO = "0001";
 const ELE_T1 = "6257";
 const ELE_T2 = "6258";
-const LIMIAR_INSTAVEL = 0.05;
+const LIMIAR_APURADO = 0.05;      // abaixo disso a UF usa o 1º turno
 const ESPACO_MS = 900;            // intervalo entre requisições de um ciclo
 const INTERVALO_MS = 60000;       // intervalo entre ciclos ao vivo
 const INTERVALO_MAX_MS = 300000;  // teto do backoff
-const SIM_TICK_MS = 2500;
 
 const UFS = [
   ["ac", "Acre"], ["al", "Alagoas"], ["ap", "Amapá"], ["am", "Amazonas"], ["ba", "Bahia"],
@@ -243,12 +230,6 @@ const NOME_UF = Object.fromEntries(UFS);
 const ORDEM_UF = Object.fromEntries(UFS.map(([uf], i) => [uf, i]));
 const COR_CAND = { "22": "var(--flavio)", "13": "var(--lula)" };
 const corDe = n => COR_CAND[n] || "var(--outros)";
-
-const MODOS = {
-  live: { ele: ELE_T2, rotulo: "2º turno" },
-  t1:   { ele: ELE_T1, rotulo: "1º turno (teste)" },
-  sim:  { ele: ELE_T1, rotulo: "Simulação" }
-};
 
 // ---------- Utilidades ----------
 const fmtInt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 0 });
@@ -288,24 +269,25 @@ async function buscar(ele, uf) {
 
 // ---------- Projeção ----------
 // dados: { uf -> normalizado }; t1: { uf -> {vv, votos:{n:votos}} }
-function projetar(dados, t1, usarFallback, numeros) {
+// UFs com menos de LIMIAR_APURADO do eleitorado apurado usam o 1º turno.
+function projetar(dados, t1, numeros) {
   const total = Object.fromEntries(numeros.map(n => [n, 0]));
   const linhas = [];
   for (const [uf] of UFS) {
     const d = dados[uf];
     const lin = { uf, d, f: 0, status: "sem", proj: {}, parc: {} };
-    if (d && d.te > 0 && d.est > 0) {
+    if (d && d.te > 0) {
       lin.f = Math.min(1, d.est / d.te);
-      lin.status = lin.f >= 1 ? "final" : lin.f < LIMIAR_INSTAVEL ? "instavel" : "parcial";
-      for (const c of d.cands) {
-        lin.proj[c.n] = c.votos / lin.f;
-        lin.parc[c.n] = d.vv > 0 ? (100 * c.votos) / d.vv : NaN;
-      }
-    } else if (usarFallback && t1[uf]) {
+      for (const c of d.cands) lin.parc[c.n] = d.vv > 0 ? (100 * c.votos) / d.vv : NaN;
+    }
+    if (lin.f >= LIMIAR_APURADO) {
+      lin.status = lin.f >= 1 ? "final" : "parcial";
+      for (const c of d.cands) lin.proj[c.n] = c.votos / lin.f;
+    } else if (t1[uf]) {
       const t = t1[uf];
       const soma = numeros.reduce((s, n) => s + (t.votos[n] || 0), 0);
       if (soma > 0) {
-        lin.status = "fallback";
+        lin.status = lin.f > 0 ? "inicio" : "fallback";
         for (const n of numeros) lin.proj[n] = (t.vv * (t.votos[n] || 0)) / soma;
       }
     }
@@ -321,8 +303,6 @@ function projetar(dados, t1, usarFallback, numeros) {
 
 // ---------- Estado ----------
 const estado = {
-  modo: "live",
-  usarFallback: true,
   dados: {},      // uf -> normalizado (inclui "br")
   erros: {},      // uf -> mensagem
   t1: {},         // uf -> {vv, votos}
@@ -330,23 +310,13 @@ const estado = {
   historico: [],
   intervalo: INTERVALO_MS,
   proximaEm: 0,
-  ciclo: 0,       // muda quando o modo muda, para abortar ciclos antigos
-  sim: null,
+  ciclo: 0,       // muda a cada leitura forçada, para abortar ciclos antigos
   ordem: { col: "uf", dir: 1 }
 };
 
-function chaveHist() { return "hist:" + estado.modo; }
+const CHAVE_HIST = "hist:" + ELE_T2;
 
-function carregarPrefs() {
-  const p = lerLocal("prefs");
-  if (p?.modo && MODOS[p.modo]) estado.modo = p.modo;
-  if (p && typeof p.usarFallback === "boolean") estado.usarFallback = p.usarFallback;
-  $("modo").value = estado.modo;
-  $("fallback").value = estado.usarFallback ? "t1" : "excluir";
-}
-function salvarPrefs() { gravarLocal("prefs", { modo: estado.modo, usarFallback: estado.usarFallback }); }
-
-// ---------- Dados do 1º turno (fallback e simulação) ----------
+// ---------- Dados do 1º turno (UFs não apuradas) ----------
 function resumoT1(d) {
   return { vv: d.vv, votos: Object.fromEntries(d.cands.map(c => [c.n, c.votos])), bruto: d };
 }
@@ -364,10 +334,10 @@ async function obterT1(uf, ciclo) {
   return r;
 }
 
-// ---------- Ciclo de leitura (modos ao vivo e teste) ----------
+// ---------- Ciclo de leitura ----------
 async function cicloRede() {
   const ciclo = estado.ciclo;
-  const ele = MODOS[estado.modo].ele;
+  const ele = ELE_T2;
   setStatus("info", "Lendo dados do TSE");
   let falhas = 0;
   for (const uf of ["br", ...UFS.map(u => u[0])]) {
@@ -383,13 +353,12 @@ async function cicloRede() {
     renderizar();
     await espera(ESPACO_MS);
   }
-  if (estado.usarFallback) {
-    for (const [uf] of UFS) {
-      const d = estado.dados[uf];
-      if (d && d.est > 0) continue;
-      try { await obterT1(uf, ciclo); } catch { /* sem fallback para esta UF */ }
-      if (ciclo !== estado.ciclo) return;
-    }
+  for (const [uf] of UFS) {
+    const d = estado.dados[uf];
+    if (d && d.te > 0 && d.est / d.te >= LIMIAR_APURADO) continue;
+    try { await obterT1(uf, ciclo); } catch { /* UF fica sem dados nesta leitura */ }
+    if (ciclo !== estado.ciclo) return;
+    renderizar();
   }
   if (ciclo !== estado.ciclo) return;
   const total = UFS.length + 1;
@@ -398,71 +367,11 @@ async function cicloRede() {
     setStatus("bad", `Falha em ${falhas} de ${total} leituras`);
   } else {
     estado.intervalo = INTERVALO_MS;
-    const rotulo = estado.modo === "t1" ? "Teste com o 1º turno" : "Ao vivo";
-    setStatus(falhas ? "warn" : "ok", falhas ? `${rotulo}, ${falhas} leitura(s) com falha` : rotulo);
+    setStatus(falhas ? "warn" : "ok", falhas ? `Ao vivo, ${falhas} leitura(s) com falha` : "Ao vivo");
   }
   registrarPonto();
   renderizar();
-  agendar(estado.modo === "t1" ? INTERVALO_MAX_MS : estado.intervalo, cicloRede);
-}
-
-// ---------- Simulação ----------
-// Usa o resultado final do 1º turno e revela as urnas aos poucos, com viés
-// dentro de cada UF que se desfaz até 100%.
-function rnd(seed) { let s = seed >>> 0; return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296); }
-
-async function iniciarSim() {
-  const ciclo = estado.ciclo;
-  setStatus("info", "Baixando dados do 1º turno para a simulação");
-  for (const uf of ["br", ...UFS.map(u => u[0])]) {
-    try { await obterT1(uf, ciclo); } catch (e) { estado.erros[uf] = e.message; }
-    if (ciclo !== estado.ciclo) return;
-  }
-  const r = rnd(20261025);
-  const params = {};
-  for (const [uf] of UFS) {
-    const cands = estado.t1[uf]?.bruto.cands || [];
-    params[uf] = {
-      atraso: r() * 0.35,
-      vel: 0.8 + r() * 0.9,
-      vies: Object.fromEntries(cands.map(c => [c.n, (r() - 0.5) * 0.3]))
-    };
-  }
-  estado.sim = { p: 0, params };
-  estado.cands = (estado.t1.br?.bruto.cands || []).map(c => ({ n: c.n, nome: c.nome }));
-  passoSim(ciclo);
-}
-
-function passoSim(ciclo) {
-  if (ciclo !== estado.ciclo) return;
-  const sim = estado.sim;
-  sim.p = Math.min(1.25, sim.p + 0.025);
-  const agora = new Date();
-  const hg = agora.toLocaleTimeString("pt-BR");
-  const br = { uf: "br", dg: agora.toLocaleDateString("pt-BR"), hg, ts: 0, st: 0, te: 0, est: 0, vv: 0, cands: [] };
-  const somaBr = {};
-  for (const [uf] of UFS) {
-    const fim = estado.t1[uf]?.bruto;
-    if (!fim) continue;
-    const pr = sim.params[uf];
-    const f = Math.max(0, Math.min(1, (sim.p - pr.atraso) * pr.vel));
-    const cands = fim.cands.map(c => {
-      const v = Math.min(c.votos, Math.round(c.votos * f * (1 + pr.vies[c.n] * (1 - f))));
-      return { n: c.n, nome: c.nome, votos: v };
-    });
-    const vv = cands.reduce((s, c) => s + c.votos, 0);
-    const d = { uf, dg: br.dg, hg, ts: fim.ts, st: Math.round(fim.ts * f), te: fim.te, est: Math.round(fim.te * f), vv, cands };
-    estado.dados[uf] = d;
-    br.ts += d.ts; br.st += d.st; br.te += d.te; br.est += d.est; br.vv += vv;
-    for (const c of cands) somaBr[c.n] = (somaBr[c.n] || 0) + c.votos;
-  }
-  br.cands = estado.cands.map(c => ({ ...c, votos: somaBr[c.n] || 0 }));
-  estado.dados.br = br;
-  setStatus(sim.p >= 1.25 ? "ok" : "info", sim.p >= 1.25 ? "Simulação concluída" : "Simulação em andamento");
-  registrarPonto();
-  renderizar();
-  if (sim.p < 1.25) agendar(SIM_TICK_MS, () => passoSim(ciclo));
-  else agendar(0, null);
+  agendar(estado.intervalo, cicloRede);
 }
 
 // ---------- Agendamento ----------
@@ -479,18 +388,10 @@ function tickContador() {
   el.textContent = s ? `em ${s} s` : "agora";
 }
 
-function iniciarModo() {
-  estado.ciclo++;
-  clearTimeout(timer);
-  estado.dados = {};
-  estado.erros = {};
-  estado.cands = [];
-  estado.sim = null;
-  estado.intervalo = INTERVALO_MS;
-  estado.historico = estado.modo === "sim" ? [] : lerLocal(chaveHist()) || [];
+function iniciar() {
+  estado.historico = lerLocal(CHAVE_HIST) || [];
   renderizar();
-  if (estado.modo === "sim") iniciarSim();
-  else cicloRede();
+  cicloRede();
 }
 
 // ---------- Cálculo derivado ----------
@@ -503,7 +404,7 @@ function nomeCand(n) { return estado.cands.find(c => c.n === n)?.nome || n; }
 
 function calcular() {
   const numeros = numerosCands();
-  const r = projetar(estado.dados, estado.t1, estado.usarFallback, numeros);
+  const r = projetar(estado.dados, estado.t1, numeros);
   const br = estado.dados.br;
   r.parcial = {};
   if (br) for (const c of br.cands) r.parcial[c.n] = br.vv > 0 ? (100 * c.votos) / br.vv : NaN;
@@ -521,7 +422,7 @@ function registrarPonto() {
   const igual = ult && Math.abs(ult.x - ponto.x) < 1e-9 && r.ordem.every(n => Math.abs((ult.proj[n] || 0) - (ponto.proj[n] || 0)) < 1e-9);
   if (igual) return;
   estado.historico.push(ponto);
-  if (estado.modo !== "sim") gravarLocal(chaveHist(), estado.historico.slice(-600));
+  gravarLocal(CHAVE_HIST, estado.historico.slice(-600));
 }
 
 // ---------- Renderização ----------
@@ -546,14 +447,11 @@ function renderAvisos(r) {
   const msgs = [];
   const nFall = r.linhas.filter(l => l.status === "fallback").length;
   const nSem = r.linhas.filter(l => l.status === "sem").length;
-  const nInst = r.linhas.filter(l => l.status === "instavel").length;
-  if (estado.modo === "live" && estado.dados.br && estado.dados.br.st === 0)
+  const nIni = r.linhas.filter(l => l.status === "inicio").length;
+  if (estado.dados.br && estado.dados.br.st === 0)
     msgs.push("A divulgação ainda não começou. Ela começa às 17h (horário de Brasília) de 25/10/2026. Até lá, a projeção usa apenas o 1º turno.");
-  if (nFall) msgs.push(`${nFall} de ${UFS.length} UFs ainda sem apuração estão projetadas com o resultado do 1º turno, dividido entre os dois finalistas.`);
-  if (nSem) msgs.push(estado.usarFallback && estado.modo !== "sim"
-    ? `${nSem} de ${UFS.length} UFs ainda não têm apuração nem resultado do 1º turno carregado; elas entram na projeção assim que o 1º turno for lido.`
-    : `${nSem} de ${UFS.length} UFs estão sem dados e ficam fora da projeção.`);
-  if (nInst) msgs.push(`${nInst} UF(s) têm menos de 5% do eleitorado apurado; a projeção delas é instável.`);
+  if (nFall + nIni) msgs.push(`${nFall + nIni} de ${UFS.length} UFs têm menos de 5% do eleitorado apurado e entram na projeção com o resultado do 1º turno, dividido entre os dois finalistas.`);
+  if (nSem) msgs.push(`${nSem} de ${UFS.length} UFs ainda não têm apuração suficiente nem resultado do 1º turno carregado; elas entram na projeção assim que o 1º turno for lido.`);
   const nErr = Object.keys(estado.erros).length;
   if (nErr) msgs.push(`Não foi possível ler ${nErr} arquivo(s) do TSE na última tentativa; a página mantém o último dado obtido e tenta de novo na próxima leitura.`);
   const el = $("avisos");
@@ -676,7 +574,7 @@ function renderGrafico(r) {
   alvo.addEventListener("pointerleave", sair);
 }
 
-const ROTULO_STATUS = { final: "Concluída", parcial: "Parcial", instavel: "Instável", fallback: "1º turno", sem: "Sem dados" };
+const ROTULO_STATUS = { final: "Concluída", parcial: "Parcial", inicio: "< 5% · usa 1º turno", fallback: "Usa 1º turno", sem: "Sem dados" };
 
 function renderTabela(r) {
   const top = r.ordem.slice(0, 2);
@@ -725,26 +623,15 @@ $("tabela").addEventListener("click", ev => {
   estado.ordem = { col: c, dir: estado.ordem.col === c ? -estado.ordem.dir : (c === "uf" || c === "status" ? 1 : -1) };
   renderTabela(calcular());
 });
-$("modo").addEventListener("change", e => { estado.modo = e.target.value; salvarPrefs(); iniciarModo(); });
-$("fallback").addEventListener("change", e => {
-  estado.usarFallback = e.target.value === "t1";
-  salvarPrefs();
-  if (estado.modo === "sim") renderizar();
-  else { estado.ciclo++; cicloRede(); }
-});
-$("atualizar").addEventListener("click", () => {
-  if (estado.modo === "sim") { estado.ciclo++; estado.historico = []; iniciarSim(); }
-  else { estado.ciclo++; cicloRede(); }
-});
+$("atualizar").addEventListener("click", () => { estado.ciclo++; cicloRede(); });
 let redim = null;
 window.addEventListener("resize", () => { clearTimeout(redim); redim = setTimeout(() => renderGrafico(calcular()), 150); });
 
 // Exposto para testes.
 window.__projecao = { projetar, normalizar, estado, calcular };
 
-carregarPrefs();
 contador = setInterval(tickContador, 1000);
-iniciarModo();
+iniciar();
 </script>
 </body>
 </html>

@@ -642,6 +642,15 @@ function renderTabela(r) {
       const dif = (l.proj[top[0]] || 0) - (l.proj[top[1]] || 0);
       const lider = dif >= 0 ? top[0] : top[1];
       saldo = `<span class="saldo" style="--c:${corDe(lider)}"><i></i>${fmtInt.format(Math.abs(dif))}</span>`;
+      // Variação do saldo em relação ao 1º turno, a favor de quem ganhou margem.
+      const t = estado.t1[l.uf];
+      if (t && t.votos[top[0]] != null && t.votos[top[1]] != null) {
+        const dif1 = t.votos[top[0]] - t.votos[top[1]];
+        const varia = dif - dif1;
+        const ganhou = varia >= 0 ? top[0] : top[1];
+        const lider1 = dif1 >= 0 ? top[0] : top[1];
+        saldo += `<small class="dif" title="Saldo no 1º turno: ${fmtInt.format(Math.abs(dif1))} votos para ${esc(nomeCand(lider1))}. Variação a favor de ${esc(nomeCand(ganhou))}."><span class="saldo" style="--c:${corDe(ganhou)}"><i></i>+${fmtInt.format(Math.abs(varia))}</span></small>`;
+      }
     }
     return `<tr>
       <td><span class="uf">${esc(l.uf)}</span>${esc(NOME_UF[l.uf])}</td>

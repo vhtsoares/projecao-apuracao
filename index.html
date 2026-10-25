@@ -148,6 +148,7 @@ tbody tr:hover { background: var(--bg); }
 td .uf { font-family: var(--f-mono); font-weight: 500; text-transform: uppercase; margin-right: 8px; }
 .prog { display: inline-block; width: 60px; height: 6px; border-radius: 3px; background: var(--line); vertical-align: middle; margin-left: 8px; overflow: hidden; }
 .prog i { display: block; height: 100%; background: var(--accent); }
+td small.dif { display: inline-block; min-width: 3.6em; margin-left: 6px; font-size: .75rem; color: var(--muted); }
 .chip { display: inline-block; font-size: .75rem; font-weight: 600; padding: 1px 8px; border-radius: 999px; }
 .chip.final { color: var(--ok); background: var(--ok-bg); }
 .chip.parcial { color: var(--accent); background: var(--info-bg); }
@@ -366,8 +367,6 @@ async function cicloRede() {
   }
   try { await obterT1("br", ciclo); } catch { /* comparação com o 1º turno indisponível */ }
   for (const [uf] of UFS) {
-    const d = estado.dados[uf];
-    if (d && d.te > 0 && d.est / d.te >= LIMIAR_APURADO) continue;
     try { await obterT1(uf, ciclo); } catch { /* UF fica sem dados nesta leitura */ }
     if (ciclo !== estado.ciclo) return;
     renderizar();
@@ -647,7 +646,12 @@ function renderTabela(r) {
     return `<tr>
       <td><span class="uf">${esc(l.uf)}</span>${esc(NOME_UF[l.uf])}</td>
       <td class="num">${fmtPct(ap)}<span class="prog"><i style="width:${Number.isFinite(ap) ? ap : 0}%"></i></span></td>
-      ${top.map(n => `<td class="num">${fmtPct(l.parc[n])}</td>`).join("")}
+      ${top.map(n => {
+        const t = estado.t1[l.uf];
+        const p1 = t && t.vv && t.votos[n] != null ? (100 * t.votos[n]) / t.vv : NaN;
+        const dif = Number.isFinite(l.parc[n]) && Number.isFinite(p1) ? `<small class="dif" title="Diferença para o 1º turno (${fmtPct(p1)})">${sinal(l.parc[n] - p1)}</small>` : "";
+        return `<td class="num">${fmtPct(l.parc[n])}${dif}</td>`;
+      }).join("")}
       ${top.map(n => `<td class="num">${l.proj[n] != null ? fmtInt.format(l.proj[n]) : "—"}</td>`).join("")}
       ${(t => `<td class="num">${fmtPct(t.brancos)}</td><td class="num">${fmtPct(t.nulos)}</td><td class="num">${fmtPct(t.abst)}</td>`)(taxas(d))}
       <td class="num">${saldo}</td>

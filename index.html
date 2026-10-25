@@ -134,10 +134,16 @@ button:hover, select:hover { border-color: var(--accent); }
 .tip .sw { display: inline-block; width: 10px; height: 3px; margin-right: 6px; vertical-align: middle; }
 
 /* Tabela */
-.tabela-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.tabela-wrap { overflow: auto; max-height: 80vh; overscroll-behavior: contain; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
 table { border-collapse: collapse; width: 100%; font-size: .92rem; }
 th, td { padding: 8px 12px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
 th:first-child, td:first-child { text-align: left; }
+/* Cabeçalho e coluna da UF fixos ao rolar a tabela */
+#tabela th { z-index: 2; }
+#tabela th:first-child, #tabela td:first-child { position: sticky; left: 0; background: var(--surface); box-shadow: 1px 0 0 var(--line); }
+#tabela td:first-child { z-index: 1; }
+#tabela th:first-child { z-index: 3; }
+#tabela tbody tr:hover td:first-child { background: var(--bg); }
 th { font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--surface); }
 th button { all: unset; cursor: pointer; display: inline-flex; gap: 4px; align-items: center; }
 th button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -476,6 +482,9 @@ function taxas(d) {
   return { brancos: (100 * d.vb) / d.tv, nulos: (100 * d.vn) / d.tv, abst: d.est ? (100 * d.a) / d.est : NaN };
 }
 
+// Abstenções, brancos e nulos somados, sobre o eleitorado das seções apuradas.
+function naoVoto(d) { return d && d.est ? (100 * (d.a + d.vb + d.vn)) / d.est : NaN; }
+
 function renderPlacar(r) {
   const top = r.ordem.slice(0, 2);
   // Sem nenhuma UF com apuração suficiente, a projeção seria só o 1º turno: não exibe o número.
@@ -620,9 +629,7 @@ function renderTabela(r) {
     { id: "apurado", rot: "Seções apuradas", val: l => (l.d && l.d.ts ? l.d.st / l.d.ts : -1) },
     ...top.map(n => ({ id: "p" + n, rot: `${nomeCand(n).split(" ")[0]} (parcial)`, val: l => (Number.isFinite(l.parc[n]) ? l.parc[n] : -1) })),
     ...top.map(n => ({ id: "v" + n, rot: `${nomeCand(n).split(" ")[0]} (projetado)`, val: l => l.proj[n] || 0 })),
-    { id: "brancos", rot: "Brancos", val: l => taxas(l.d).brancos || -1 },
-    { id: "nulos", rot: "Nulos", val: l => taxas(l.d).nulos || -1 },
-    { id: "abst", rot: "Abstenção", val: l => taxas(l.d).abst || -1 },
+    { id: "naovoto", rot: "Não-voto", val: l => naoVoto(l.d) || -1 },
     { id: "saldo", rot: "Saldo projetado", val: l => (top.length === 2 ? (l.proj[top[0]] || 0) - (l.proj[top[1]] || 0) : 0) },
     { id: "status", rot: "Situação", val: l => ROTULO_STATUS[l.status] }
   ];
@@ -653,7 +660,7 @@ function renderTabela(r) {
       }
     }
     return `<tr>
-      <td><span class="uf">${esc(l.uf)}</span>${esc(NOME_UF[l.uf])}</td>
+      <td><span class="uf" title="${esc(NOME_UF[l.uf])}">${esc(l.uf)}</span></td>
       <td class="num">${fmtPct(ap)}<span class="prog"><i style="width:${Number.isFinite(ap) ? ap : 0}%"></i></span></td>
       ${top.map(n => {
         const t = estado.t1[l.uf];
@@ -662,7 +669,7 @@ function renderTabela(r) {
         return `<td class="num">${fmtPct(l.parc[n])}${dif}</td>`;
       }).join("")}
       ${top.map(n => `<td class="num">${l.proj[n] != null ? fmtInt.format(l.proj[n]) : "—"}</td>`).join("")}
-      ${(t => `<td class="num">${fmtPct(t.brancos)}</td><td class="num">${fmtPct(t.nulos)}</td><td class="num">${fmtPct(t.abst)}</td>`)(taxas(d))}
+      <td class="num" title="Abstenções, brancos e nulos sobre o eleitorado das seções apuradas">${fmtPct(naoVoto(d))}</td>
       <td class="num">${saldo}</td>
       <td><span class="chip ${l.status}">${ROTULO_STATUS[l.status]}</span>${err ? ` <span class="chip erro" title="${esc(err)}">Falha na leitura</span>` : ""}</td>
     </tr>`;

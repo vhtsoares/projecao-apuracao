@@ -502,7 +502,7 @@ function renderPlacar(r) {
     return `<article class="cand" style="--cor:${corDe(n)}">
       <div class="nome">${esc(nomeCand(n))} <span class="n">${esc(n)}</span></div>
       <div class="dupla">
-        <div><div class="rot">Apuração parcial</div><div class="pct">${grande(r.parcial[n])}</div></div>
+        <div><div class="rot">Apuração parcial</div><div class="pct">${grande(r.parcial[n])}</div>${(v => v != null ? `<div class="muted num" style="font-size:.85rem">${fmtInt.format(v)} votos apurados</div>` : "")(br?.cands.find(c => c.n === n)?.votos)}</div>
         <div><div class="rot">Projeção com 100%</div><div class="pct">${grande(proj)}</div></div>
       </div>
       <table class="comp">
